@@ -20,10 +20,8 @@ public static class SensorManager
             yield return new WaitForSeconds(1);
             maxWait--;
         }
-
         if (maxWait < 1)
             yield break;
-
         if (Input.location.status == LocationServiceStatus.Failed)
             yield break;
         Input.compass.enabled = true;
@@ -64,23 +62,26 @@ public static class SensorManager
         }
     }
     /// <summary>
+    ///디바이스가 모바일인지 확인하는 메서드
+    /// </summary>
+    /// <returns>
+    ///디바이스가 모바일인지 나타내는 여부
+    ///</returns>
+    public static bool isMobile
+    {
+        get
+        {
+            return Application.platform == RuntimePlatform.Android || Application.platform == RuntimePlatform.IPhonePlayer;
+        }
+    }
+    /// <summary>
     ///GPS 클래스
     /// </summary>
     public static class GPS
     {
-        /// <summary>
-        ///위도 프로퍼티
-        /// </summary>
-        /// <returns>
-        ///위도
-        ///</returns>
-        public static float lat
-        {
-            get
-            {
-                return Input.location.lastData.latitude;
-            }
-        }
+        private static Vector3 prevPosition;
+        private static bool isFirstUpdate = true;
+        public static float movementThreshold = 0.1f;
         /// <summary>
         ///경도 프로퍼티
         /// </summary>
@@ -108,75 +109,292 @@ public static class SensorManager
             }
         }
         /// <summary>
-        ///현재 위치를 2D로 구현한 프로퍼티
+        ///위도 프로퍼티
         /// </summary>
         /// <returns>
-        ///현재 위치(2D)
+        ///위도
         ///</returns>
-        public static Vector2 position2
+        public static float lat
         {
             get
             {
-                return new Vector2(lon, lat);
+                return Input.location.lastData.latitude;
             }
         }
         /// <summary>
-        ///현재 위치를 3D로 구현한 프로퍼티
+        ///위도 경도를 써서 2D로 나타내는 클래스
         /// </summary>
-        /// <returns>
-        ///현재 위치(3D)
-        ///</returns>
-        public static Vector3 position3
+        public static class position2D
         {
-            get
+            /// <summary>
+            ///현재 위치를 알려주는 프로퍼티
+            /// </summary>
+            /// <returns>
+            ///현재 위치
+            ///</returns>
+            public static Vector2 position
             {
-                return new Vector3(lon, lat, alt);
+                get
+                {
+                    return new Vector2(lon, lat);
+                }
+            }
+
+            /// <summary>
+            /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+            /// DISTANCE1 = arccos[sin(LAT1 ) × sin(LAT2 ) + cos(LAT1 ) × cos(LAT2 ) × cos(LONG2 − LONG1 )]
+            /// </summary>
+            /// <param name="targetLat">목표 위치의 위도</param>
+            /// <param name="targetLon">목표 위치의 경도</param>
+            /// <returns>현재 위치와 목표 위치의 거리(단위 : m)</returns>
+            public static float DistanceM(float targetLat, float targetLon)
+            {
+                float r = 6371000;
+                float lat1 = lat * Mathf.Deg2Rad;
+                float lat2 = targetLat * Mathf.Deg2Rad;
+                float lon1 = lon * Mathf.Deg2Rad;
+                float lon2 = targetLon * Mathf.Deg2Rad;
+                float distance = Mathf.Acos(
+                    Mathf.Sin(lat1) * Mathf.Sin(lat2) +
+                    Mathf.Cos(lat1) * Mathf.Cos(lat2) * Mathf.Cos(lon2 - lon1)
+                ) * r;
+                return distance;
+            }
+            /// <summary>
+            /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+            /// DISTANCE1 = arccos[sin(LAT1 ) × sin(LAT2 ) + cos(LAT1 ) × cos(LAT2 ) × cos(LONG2 − LONG1 )]
+            /// </summary>
+            /// <param name="targetLat">목표 위치의 위도</param>
+            /// <param name="targetLon">목표 위치의 경도</param>
+            /// <returns>현재 위치와 목표 위치의 거리(단위 : Km)</returns>
+            public static float DistanceKm(float targetLat, float targetLon)
+            {
+                return DistanceM(targetLat, targetLon) / 1000;
+            }
+            /// <summary>
+            /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+            /// </summary>
+            /// <param name="target">목표 위치</param>
+            /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
+            public static float DistanceM(Vector2 target)
+            {
+                return DistanceM(target.y, target.x);
+            }
+            /// <summary>
+            /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+            /// </summary>
+            /// <param name="target">목표 위치</param>
+            /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
+            public static float DistanceKm(Vector2 target)
+            {
+                return DistanceKm(target.y, target.x);
+            }
+            /// <summary>
+            /// 움직였는지 안움직였는지 판단하는 메서드
+            /// </summary>
+            public static bool isMove
+            {
+                get
+                {
+                    if (isFirstUpdate)
+                    {
+                        prevPosition = position;
+                        isFirstUpdate = false;
+                        return false;
+                    }
+                    float distance = Vector2.Distance(prevPosition, position);
+                    bool moved = distance >= movementThreshold;
+                    prevPosition = position;
+
+                    return moved;
+                }
             }
         }
-
         /// <summary>
-        /// 목표 위치와 현재 위치의 거리를 계산하는 메서드(2D)
+        ///현재위치를 3D로 나타내는 클래스
         /// </summary>
-        /// <param name="targetLat">목표 위치의 위도</param>
-        /// <param name="targetLon">목표 위치의 경도</param>
-        /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
-        public static float Distance2D(float targetLat, float targetLon)
+        public static class position3D
         {
-            var targetLocation = new Vector2(targetLat, targetLon);
+            /// <summary>
+            ///고도를 씀
+            /// </summary>
+            public static class useAlt
+            {
+                /// <summary>
+                ///현재 위치를 알려주는 프로퍼티
+                /// </summary>
+                /// <returns>
+                ///현재 위치
+                ///</returns>
+                public static Vector3 position
+                {
+                    get
+                    {
+                        return new Vector3(lon, alt, lat);
+                    }
+                }
 
-            return Vector2.Distance(position2, targetLocation) * 111000; 
-        }
-        /// <summary>
-        /// 목표 위치와 현재 위치의 거리를 계산하는 메서드(2D)
-        /// </summary>
-        /// <param name="target">목표 위치</param>
-        /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
-        public static float Distance2D(Vector2 target)
-        {
-            return Vector2.Distance(position2, target) * 111000;
-        }
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// </summary>
+                /// <param name="targetLat">목표 위치의 위도</param>
+                /// <param name="targetLon">목표 위치의 경도</param>
+                /// <param name="targetAlt">목표 위치의 고도</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : m)</returns>
+                public static float DistanceM(float targetLat, float targetLon, float targetAlt)
+                {
+                    float x = position2D.DistanceM(targetLat, targetLon);
+                    float y = targetAlt - alt;
 
-        /// <summary>
-        /// 목표 위치와 현재 위치의 거리를 계산하는 메서드(3D)
-        /// </summary>
-        /// <param name="targetLat">목표 위치의 위도</param>
-        /// <param name="targetLon">목표 위치의 경도</param>
-        /// <param name="targetAlt">목표 위치의 고도</param>
-        /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
-        public static float Distance3D(float targetLat, float targetLon,float targetAlt)
-        {
-            var targetLocation = new Vector3(targetLat, targetLon,targetAlt);
+                    return new Vector3(x, y).magnitude;
+                }
 
-            return Vector3.Distance(position3, targetLocation) * 111000; 
-        }
-        /// <summary>
-        /// 목표 위치와 현재 위치의 거리를 계산하는 메서드(3D)
-        /// </summary>
-        /// <param name="target">목표 위치</param>
-        /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
-        public static float Distance3D(Vector3 target)
-        {
-            return Vector3.Distance(position3, target) * 111000;
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// </summary>
+                /// <param name="targetLat">목표 위치의 위도</param>
+                /// <param name="targetLon">목표 위치의 경도</param>
+                /// <param name="targetAlt">목표 위치의 고도</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : Km)</returns>
+                public static float DistanceKm(float targetLat, float targetLon, float targetAlt)
+                {
+                    float x = position2D.DistanceM(targetLat, targetLon);
+                    float y = targetAlt - alt;
+
+                    return new Vector3(x, y).magnitude / 1000;
+                }
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// </summary>
+                /// <param name="target">목표 위치</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : m)</returns>
+                public static float DistanceM(Vector3 target)
+                {
+                    return DistanceM(target.z, target.x, target.y);
+                }
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// </summary>
+                /// <param name="target">목표 위치</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : Km)</returns>
+                public static float DistanceKm(Vector3 target)
+                {
+                    return DistanceKm(target.z, target.x, target.y);
+                }
+                /// <summary>
+                /// 움직였는지 안움직였는지 판단하는 메서드
+                /// </summary>
+                public static bool isMove
+                {
+                    get
+                    {
+                        if (isFirstUpdate)
+                        {
+                            prevPosition = position;
+                            isFirstUpdate = false;
+                            return false;
+                        }
+                        float distance = Vector2.Distance(prevPosition, position);
+                        bool moved = distance >= movementThreshold;
+                        prevPosition = position;
+
+                        return moved;
+                    }
+                }
+            }
+            /// <summary>
+            ///고도를 안씀
+            /// </summary>
+            public static class noAlt
+            {
+                private static float Y = 0;
+                /// <summary>
+                ///임시 고도를 지정해주는 프로퍼티(기본값 : 0)
+                /// </summary>
+                private static float y
+                {
+                    set
+                    {
+                        Y = value;
+                    }
+                }
+                /// <summary>
+                ///현재 위치를 알려주는 프로퍼티
+                /// </summary>
+                /// <returns>
+                ///현재 위치
+                ///</returns>
+                public static Vector3 position
+                {
+                    get
+                    {
+                        return new Vector3(lon, Y, lat);
+                    }
+                }
+
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// DISTANCE1 = arccos[sin(LAT1 ) × sin(LAT2 ) + cos(LAT1 ) × cos(LAT2 ) × cos(LONG2 − LONG1 )]
+                /// </summary>
+                /// <param name="targetLat">목표 위치의 위도</param>
+                /// <param name="targetLon">목표 위치의 경도</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : m)</returns>
+                public static float DistanceM(float targetLat, float targetLon)
+                {
+                    return SensorManager.GPS.position2D.DistanceM(targetLat, targetLon);
+                }
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// DISTANCE1 = arccos[sin(LAT1 ) × sin(LAT2 ) + cos(LAT1 ) × cos(LAT2 ) × cos(LONG2 − LONG1 )]
+                /// </summary>
+                /// <param name="targetLat">목표 위치의 위도</param>
+                /// <param name="targetLon">목표 위치의 경도</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : Km)</returns>
+                public static float DistanceKm(float targetLat, float targetLon)
+                {
+                    return DistanceM(targetLat, targetLon) / 1000;
+                }
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// </summary>
+                /// <param name="target">목표 위치</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
+                public static float DistanceM(Vector3 target)
+                {
+                    return DistanceM(target.z, target.x);
+                }
+                /// <summary>
+                /// 목표 위치와 현재 위치의 거리를 계산하는 메서드
+                /// </summary>
+                /// <param name="target">목표 위치</param>
+                /// <returns>현재 위치와 목표 위치의 거리(단위 : 미터)</returns>
+                public static float DistanceKm(Vector3 target)
+                {
+                    return DistanceKm(target.z, target.x);
+                }
+                /// <summary>
+                /// 움직였는지 안움직였는지 판단하는 메서드
+                /// </summary>
+                public static bool isMove
+                {
+                    get
+                    {
+                        if (isFirstUpdate)
+                        {
+                            prevPosition = position;
+                            isFirstUpdate = false;
+                            return false;
+                        }
+                        float distance = Vector2.Distance(prevPosition, position);
+                        bool moved = distance >= movementThreshold;
+                        prevPosition = position;
+
+                        return moved;
+                    }
+                }
+
+            }
+
         }
     }
     /// <summary>
@@ -276,7 +494,7 @@ public static class SensorManager
         ///휴대폰이 움직였는지 안움직였는지 판단하는 프로퍼티
         /// </summary>
         /// <returns>
-        ///움짇임(true), 안움직임(false)
+        ///움직임(true), 안움직임(false)
         ///</returns>
 
         public static bool isMove
