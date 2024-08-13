@@ -311,7 +311,7 @@ public static class SensorManager
                 /// <summary>
                 ///임시 고도를 지정해주는 프로퍼티(기본값 : 0)
                 /// </summary>
-                private static float y
+                public static float y
                 {
                     set
                     {
